@@ -7,9 +7,6 @@ using TestAi;
 const string trainFilePath =
     @"G:\UG\TestAi\TestAi\Data\train.csv";
 
-const string testFilePath =
-    @"G:\UG\TestAi\TestAi\Data\test.csv";
-
 const string modelFilePath =
     @"G:\UG\TestAi\TestAi\Data\model.bin";
 
@@ -22,7 +19,7 @@ var config = new CsvConfiguration(
     MissingFieldFound = null
 };
 
-const double validationRate = 0.1d;
+const double validationRate = 0.05d;
 
 var images = LoadImages(
     trainFilePath,
@@ -45,11 +42,11 @@ Console.WriteLine();
 
 var network = new NeuralNetwork(
     inputSize: 784,
-    hiddenSizes: [256, 128,64,32],
+    hiddenSizes: [512,256,128,64,32],
     classCount: 10);
 
-const int epochs = 20;
-const double learningRate = 0.001;
+const int epochs = 25;
+const double learningRate = 0.0005;
 
 var watch = Stopwatch.StartNew();
 
