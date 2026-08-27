@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Benchmarks/Benchmarks.csproj" />
+  <Project Path="TestAi/TestAi.csproj" />
+</Solution>
