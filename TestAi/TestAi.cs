@@ -306,7 +306,7 @@ namespace TestAi
         {
             const int imageSize = 28;
 
-            const string shades = " .:-=+*@██";
+            const string shades = " ░▒▓▓███";
 
             for (var row = 0; row < imageSize; row++)
             {
