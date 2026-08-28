@@ -4,5 +4,7 @@ public enum ActivationType
 {
     None,
     LeakyRelu,
-    Relu
+    Relu,
+    Sigmoid,
+    Tanh
 }

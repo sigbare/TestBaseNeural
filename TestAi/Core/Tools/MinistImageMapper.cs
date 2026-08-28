@@ -1,6 +1,6 @@
 using CsvHelper.Configuration;
 
-namespace TestAi;
+namespace TestAi.Core.Tools;
 
 public sealed class MnistImageMap : ClassMap<MnistImage>
 {

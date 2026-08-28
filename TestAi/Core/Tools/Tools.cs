@@ -1,7 +1,7 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
-namespace TestAi;
+namespace TestAi.Core.Tools;
 
 public static class MathFunctions
 {

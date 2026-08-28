@@ -1,4 +1,5 @@
 using TestAi.Core.Models.Common;
+using TestAi.Core.Tools;
 using TestAi.Neural;
 
 namespace TestAi;
@@ -7,16 +8,18 @@ public sealed class NeuralNetwork
 {
     private readonly List<NeuralLayer> _hiddenLayers = [];
     private readonly NeuralLayer _outputLayer;
-
     private readonly int _classCount;
+
+    public ActivationType Type {get; set;}
 
     public NeuralNetwork(
         int inputSize,
         IReadOnlyList<int> hiddenSizes,
-        int classCount)
+        int classCount,
+        ActivationType type = ActivationType.LeakyRelu)
     {
-        if (inputSize <= 0)
-            throw new ArgumentOutOfRangeException(nameof(inputSize));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(inputSize);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(classCount);
 
         if (hiddenSizes is null || hiddenSizes.Count == 0)
             throw new ArgumentException(
@@ -28,8 +31,7 @@ public sealed class NeuralNetwork
                 "must be positive size.",
                 nameof(hiddenSizes));
 
-        if (classCount <= 0)
-            throw new ArgumentOutOfRangeException(nameof(classCount));
+        Type = type;
 
         _classCount = classCount;
 
@@ -42,7 +44,7 @@ public sealed class NeuralNetwork
             _hiddenLayers.Add(new NeuralLayer(
                 previousSize,
                 hiddenSize,
-                ActivationType.LeakyRelu,
+                type,
                 random));
 
             previousSize = hiddenSize;
@@ -144,7 +146,7 @@ public sealed class NeuralNetwork
         writer.Write(1);
 
         writer.Write(_hiddenLayers.Count);
-
+        
         foreach (var layer in _hiddenLayers)
             layer.Save(writer);
 
@@ -160,7 +162,7 @@ public sealed class NeuralNetwork
         if (!File.Exists(filePath))
         {
             throw new FileNotFoundException(
-                "Файл модели не найден.",
+                "Not found modelFile",
                 filePath);
         }
 
@@ -175,10 +177,8 @@ public sealed class NeuralNetwork
         var version = reader.ReadInt32();
 
         if (version != 1)
-        {
             throw new InvalidOperationException(
-                $"Неподдерживаемая версия модели: {version}.");
-        }
+                $"Error unsupported version model: {version}.");
 
         var hiddenLayerCount = reader.ReadInt32();
 
@@ -197,8 +197,7 @@ public sealed class NeuralNetwork
     }
 
 
-    private void ValidateInput(double[] input)
-    {
-        ArgumentNullException.ThrowIfNull(input);
-    }
+    private static void ValidateInput(double[] input)
+        => ArgumentNullException.ThrowIfNull(input);
+
 }

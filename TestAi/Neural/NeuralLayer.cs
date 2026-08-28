@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using TestAi.Core.Abstractions;
 using TestAi.Core.Models.Common;
@@ -45,6 +46,9 @@ public sealed class NeuralLayer : INeuralLayer
         Array.Clear(_biases);
     }
 
+    public int GetLayerSize()
+        => _outputSize;
+
     public double[] Forward(double[] inputs)
     {
         ArgumentNullException.ThrowIfNull(inputs);
@@ -57,6 +61,8 @@ public sealed class NeuralLayer : INeuralLayer
                 nameof(inputs));
         }
 
+
+
         _lastInputs ??= new double[_inputSize];
         _lastPreActivations ??= new double[_outputSize];
 
@@ -64,7 +70,7 @@ public sealed class NeuralLayer : INeuralLayer
 
         var outputs = new double[_outputSize];
 
-        if (_outputSize < 64)
+        if (_outputSize < 32)
         {
             ForwardSequential(inputs, outputs);
         }
@@ -77,8 +83,8 @@ public sealed class NeuralLayer : INeuralLayer
     }
 
     public double[] Backward(
-        double[] outputGradients,
-        double learningRate)
+    double[] outputGradients,
+    double learningRate)
     {
         ArgumentNullException.ThrowIfNull(outputGradients);
 
@@ -97,38 +103,76 @@ public sealed class NeuralLayer : INeuralLayer
                 nameof(outputGradients));
         }
 
+        var inputs = _lastInputs;
+        var weights = _weights;
+        var biases = _biases;
+        var preActivations = _lastPreActivations;
+
         var inputGradients = new double[_inputSize];
+
+        var vectorSize = Vector<double>.Count;
+        var simdInputLength = _inputSize - _inputSize % vectorSize;
 
         for (var neuron = 0; neuron < _outputSize; neuron++)
         {
             var activationGradient =
-                ActivationDerivative(
-                    _lastPreActivations[neuron]);
+                ActivationDerivative(preActivations[neuron]);
 
             var localGradient =
                 outputGradients[neuron] * activationGradient;
 
             var offset = neuron * _inputSize;
 
-            for (var input = 0; input < _inputSize; input++)
+            var gradientVector =
+                new Vector<double>(localGradient);
+
+            var learningRateGradientVector =
+                new Vector<double>(
+                    learningRate * localGradient);
+
+            var input = 0;
+
+            for (; input < simdInputLength; input += vectorSize)
             {
                 var weightIndex = offset + input;
 
+                var weightsVector =
+                    new Vector<double>(weights, weightIndex);
 
-                var oldWeight = _weights[weightIndex];
+                var inputsVector =
+                    new Vector<double>(inputs, input);
+
+                var inputGradientsVector =
+                    new Vector<double>(inputGradients, input);
+
+                inputGradientsVector +=
+                    gradientVector * weightsVector;
+
+                inputGradientsVector.CopyTo(
+                    inputGradients,
+                    input);
+                weightsVector -=
+                    learningRateGradientVector * inputsVector;
+
+                weightsVector.CopyTo(
+                    weights,
+                    weightIndex);
+            }
+
+            for (; input < _inputSize; input++)
+            {
+                var weightIndex = offset + input;
+                var oldWeight = weights[weightIndex];
 
                 inputGradients[input] +=
                     localGradient * oldWeight;
 
-                var weightGradient =
-                    localGradient * _lastInputs[input];
-
-                _weights[weightIndex] -=
-                    learningRate * weightGradient;
+                weights[weightIndex] =
+                    oldWeight -
+                    learningRate * localGradient * inputs[input];
             }
 
-            _biases[neuron] -=
-                learningRate * localGradient;
+            biases[neuron] -= localGradient;
         }
 
         return inputGradients;
@@ -137,7 +181,6 @@ public sealed class NeuralLayer : INeuralLayer
     public void Save(BinaryWriter writer)
     {
         ArgumentNullException.ThrowIfNull(writer);
-
 
         writer.Write(_inputSize);
         writer.Write(_outputSize);
@@ -161,11 +204,10 @@ public sealed class NeuralLayer : INeuralLayer
         var outputSize = reader.ReadInt32();
 
         if (inputSize != _inputSize ||
-            outputSize != _outputSize)
+    outputSize != _outputSize)
         {
             throw new InvalidOperationException(
-                "Размер слоя в файле не совпадает " +
-                "с текущей архитектурой.");
+                "Layer dimensions in the file do not match the current architecture.");
         }
 
         var weightsLength = reader.ReadInt32();
@@ -173,7 +215,7 @@ public sealed class NeuralLayer : INeuralLayer
         if (weightsLength != _weights.Length)
         {
             throw new InvalidOperationException(
-                "Количество весов не совпадает.");
+                "The number of weights does not match.");
         }
 
         for (var i = 0; i < _weights.Length; i++)
@@ -184,7 +226,7 @@ public sealed class NeuralLayer : INeuralLayer
         if (biasesLength != _biases.Length)
         {
             throw new InvalidOperationException(
-                "Количество bias не совпадает.");
+                "The number of biases does not match.");
         }
 
         for (var i = 0; i < _biases.Length; i++)
@@ -192,22 +234,45 @@ public sealed class NeuralLayer : INeuralLayer
     }
 
     private void ForwardSequential(
-        ReadOnlySpan<double> inputs,
-        Span<double> outputs)
+    ReadOnlySpan<double> inputs,
+    Span<double> outputs)
     {
+        var weights = _weights;
+        var biases = _biases;
+        var preActivations = _lastPreActivations!;
+
+        var vectorSize = Vector<double>.Count;
+
+        var simdInputLength = _inputSize - _inputSize % vectorSize;
+
         for (var neuron = 0; neuron < _outputSize; neuron++)
         {
             var offset = neuron * _inputSize;
-            var sum = _biases[neuron];
 
-            for (var input = 0; input < _inputSize; input++)
+            var sum = biases[neuron];
+            var input = 0;
+
+            for (; input < simdInputLength; input += vectorSize)
+            {
+                var weightsVector =
+                    new Vector<double>(weights, offset + input);
+
+                var inputsVector =
+                    new Vector<double>(inputs.Slice(input, vectorSize));
+
+                sum += Vector.Dot(
+                    weightsVector,
+                    inputsVector);
+            }
+
+            for (; input < _inputSize; input++)
             {
                 sum +=
-                    _weights[offset + input] *
+                    weights[offset + input] *
                     inputs[input];
             }
 
-            _lastPreActivations![neuron] = sum;
+            preActivations[neuron] = sum;
             outputs[neuron] = Activate(sum);
         }
     }
@@ -218,22 +283,51 @@ public sealed class NeuralLayer : INeuralLayer
     {
         var inputArray = inputs.ToArray();
 
+        var weights = _weights;
+        var biases = _biases;
+        var preActivations = _lastPreActivations!;
+
+        var vectorSize = Vector<double>.Count;
+        var simdInputLength =
+            _inputSize - _inputSize % vectorSize;
+
+
         Parallel.For(
             0,
             _outputSize,
             neuron =>
             {
                 var offset = neuron * _inputSize;
-                var sum = _biases[neuron];
 
-                for (var input = 0; input < _inputSize; input++)
+                var sum = biases[neuron];
+                var input = 0;
+
+
+                for (; input < simdInputLength; input += vectorSize)
+                {
+                    var weightsVector =
+                        new Vector<double>(
+                            weights,
+                            offset + input);
+
+                    var inputsVector =
+                        new Vector<double>(
+                            inputArray,
+                            input);
+
+                    sum += Vector.Dot(
+                        weightsVector,
+                        inputsVector);
+                }
+
+                for (; input < _inputSize; input++)
                 {
                     sum +=
-                        _weights[offset + input] *
+                        weights[offset + input] *
                         inputArray[input];
                 }
 
-                _lastPreActivations![neuron] = sum;
+                preActivations[neuron] = sum;
                 outputs[neuron] = Activate(sum);
             });
     }
@@ -253,9 +347,20 @@ public sealed class NeuralLayer : INeuralLayer
                     ? value
                     : 0.0,
 
-            ActivationType.None => value,
+            ActivationType.Sigmoid =>
+                Sigmoid(value),
 
-            _ => value
+            ActivationType.Tanh =>
+                Math.Tanh(value),
+
+            ActivationType.None =>
+                value,
+
+            _ =>
+                throw new ArgumentOutOfRangeException(
+                    nameof(_activationType),
+                    _activationType,
+                    "Unsupported activation type.")
         };
     }
 
@@ -274,9 +379,30 @@ public sealed class NeuralLayer : INeuralLayer
                     ? 1.0
                     : 0.0,
 
-            ActivationType.None => 1.0,
+            ActivationType.Sigmoid =>
+                Sigmoid(value) * (1.0 - Sigmoid(value)),
 
-            _ => 1.0
+            ActivationType.Tanh =>
+                1.0 - Math.Pow(Math.Tanh(value), 2.0),
+
+            ActivationType.None =>
+                1.0,
+
+            _ =>
+                throw new ArgumentOutOfRangeException(
+                    nameof(_activationType),
+                    _activationType,
+                    "Unsupported activation type.")
         };
+
+
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static double Sigmoid(double value)
+    {
+        return value >= 0.0
+            ? 1.0 / (1.0 + Math.Exp(-value))
+            : Math.Exp(value) / (1.0 + Math.Exp(value));
     }
 }

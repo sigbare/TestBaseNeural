@@ -1,4 +1,4 @@
-namespace TestAi;
+namespace TestAi.Core.Tools;
 
 public class MnistImage
 {
